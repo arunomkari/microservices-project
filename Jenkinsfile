@@ -1,22 +1,61 @@
 pipeline {
     agent any
 
+    environment {
+        AWS_DEFAULT_REGION = 'ap-south-1'
+        CLUSTER_NAME = 'MY-EKS'
+    }
+
     stages {
-        stage('Deploy To Kubernetes') {
+
+        stage('Checkout') {
             steps {
-                withKubeCredentials(kubectlCredentials: [[caCertificate: '', clusterName: 'MY-EKS', contextName: '', credentialsId: 'k8-token', namespace: 'https://7A706135F6B100D15CFD11A4C47C1CBF.gr7.ap-south-1.eks.amazonaws.com']]) {
-                    sh "kubectl apply -f deployment-service.yml"
-                    
-                }
+                checkout scm
             }
         }
-        
-        stage('verify Deployment') {
+
+        stage('Configure EKS') {
             steps {
-                withKubeCredentials(kubectlCredentials: [[caCertificate: '', clusterName: 'MY-EKS', contextName: '', credentialsId: 'k8-token', namespace: 'webapps', serverUrl: 'https://7A706135F6B100D15CFD11A4C47C1CBF.gr7.ap-south-1.eks.amazonaws.com']]) {
-                    sh "kubectl get svc -n webapps"
-                }
+                sh '''
+                    aws eks update-kubeconfig \
+                      --region $AWS_DEFAULT_REGION \
+                      --name $CLUSTER_NAME
+
+                    kubectl get nodes
+                '''
             }
+        }
+
+        stage('Deploy To Kubernetes') {
+            steps {
+                sh '''
+                    kubectl apply -f deployment-service.yml
+                '''
+            }
+        }
+
+        stage('Verify Deployment') {
+            steps {
+                sh '''
+                    kubectl get deployment -n webapps
+                    kubectl get pods -n webapps
+                    kubectl get svc -n webapps
+                '''
+            }
+        }
+    }
+
+    post {
+        always {
+            echo 'Pipeline Execution Completed'
+        }
+
+        success {
+            echo 'Deployment Successful'
+        }
+
+        failure {
+            echo 'Deployment Failed'
         }
     }
 }
